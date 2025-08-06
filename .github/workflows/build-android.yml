@@ -67,11 +67,3 @@ jobs:
             simple_live_app/build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk
             simple_live_app/build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk
             simple_live_app/build/app/outputs/flutter-apk/app-x86_64-debug.apk```
-
-### 这次修改的要点：
-
-1.  **步骤名称更新**：我将步骤名从 `Create Dummy Key Properties` 改为了 `Create Dummy Signing Files`，更准确地描述了它的工作。
-2.  **创建空文件**：在写 `key.properties` 之前，我们先用 `touch simple_live_app/android/app/dummy.jks` 命令，在 Gradle 会去检查的路径下，创建了一个0kb的空文件。
-3.  **满足所有检查**：这样一来，Gradle 的签名检查无论是检查 `key.properties` 的内容，还是检查 `dummy.jks` 文件的物理存在，都会得到满足，从而顺利地放行，让 `debug` 构建继续进行。
-
-请您提交这个修改。这次我们为那个“固执的门卫”提供了一整套的“假证件”，它没有理由再把我们拦在门外了。
