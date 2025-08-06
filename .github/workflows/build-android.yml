@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Signed Android APK
 
 on:
   workflow_dispatch:
@@ -36,34 +36,37 @@ jobs:
           flutter-version: '3.22.x'
           cache: true 
 
-      # --- 关键修复：同时创建虚拟的属性文件和虚拟的密钥库文件 ---
-      - name: Create Dummy Signing Files
-        run: |
-          # 1. 创建一个空的 dummy.jks 文件来满足文件存在性检查
-          # 注意路径是 android/app/dummy.jks
-          touch simple_live_app/android/app/dummy.jks
+      # --- 关键修复：使用你提供的真实签名信息 ---
+      - name: Decode Keystore
+        id: android_keystore
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: release.jks
+          encodedString: ${{ secrets.KEYSTORE_BASE64 }}
 
-          # 2. 创建 key.properties 文件，指向我们刚刚创建的空文件
-          echo "storeFile=dummy.jks" > simple_live_app/android/key.properties
-          echo "storePassword=dummy" >> simple_live_app/android/key.properties
-          echo "keyPassword=dummy" >> simple_live_app/android/key.properties
-          echo "keyAlias=dummy" >> simple_live_app/android/key.properties
+      - name: Create Key Properties
+        run: |
+          echo "storeFile=${{ steps.android_keystore.outputs.filePath }}" > simple_live_app/android/key.properties
+          echo "storePassword=${{ secrets.STORE_PASSWORD }}" >> simple_live_app/android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> simple_live_app/android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> simple_live_app/android/key.properties
           
       - name: Restore and Upgrade Packages
         run: |
           cd simple_live_app
           flutter pub upgrade
       
-      - name: Build Android APK (Debug)
+      # --- 关键修复：编译 Release 版本 ---
+      - name: Build Android APK (Release)
         run: |
           cd simple_live_app
-          flutter build apk --debug --split-per-abi
+          flutter build apk --release --split-per-abi
 
-      - name: Upload Android APK
+      - name: Upload Signed Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: android-debug-apk
+          name: android-release-apk
           path: |
-            simple_live_app/build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk
-            simple_live_app/build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk
-            simple_live_app/build/app/outputs/flutter-apk/app-x86_64-debug.apk```
+            simple_live_app/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            simple_live_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            simple_live_app/build/app/outputs/flutter-apk/app-x86_64-release.apk
