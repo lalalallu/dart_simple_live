@@ -1,0 +1,78 @@
+name: Build Android APK
+
+# 定义工作流的触发条件
+on:
+  # 允许你从 GitHub Actions 页面手动点击 "Run workflow" 来启动
+  workflow_dispatch:
+  # 当有新的 push 到 master 分支时自动启动
+  push:
+    branches:
+      - 'master'
+    # 只有当 android 或 pubspec 文件发生变化时才触发，可以节省资源 (可选)
+    paths:
+      - 'simple_live_app/android/**'
+      - 'simple_live_app/lib/**'
+      - 'simple_live_app/pubspec.yaml'
+      - '.github/workflows/build-android.yml'
+
+jobs:
+  # 定义一个名为 build 的任务
+  build:
+    # 指定运行环境为最新的 Ubuntu 系统
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # 这个任务只需要读取代码，不需要写权限
+
+    steps:
+      # 第1步：下载你的仓库代码
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      # 第2步：设置Java环境，这是编译安卓应用所必需的
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: "17"
+          cache: 'gradle'
+      
+      # 第3步：设置Flutter SDK环境
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.x'
+          cache: true 
+
+      # 第4步 (关键修复)：在编译前创建一个虚拟的 key.properties 文件
+      # 这会“骗过” Gradle 的强制签名检查，而不需要修改项目代码
+      - name: Create Dummy Key Properties
+        run: |
+          echo "storeFile=dummy.jks" > simple_live_app/android/key.properties
+          echo "storePassword=dummy" >> simple_live_app/android/key.properties
+          echo "keyPassword=dummy" >> simple_live_app/android/key.properties
+          echo "keyAlias=dummy" >> simple_live_app/android/key.properties
+          
+      # 第5步：获取并升级Flutter依赖包
+      - name: Restore and Upgrade Packages
+        run: |
+          cd simple_live_app
+          flutter pub upgrade # 使用 upgrade 避免潜在的依赖冲突
+      
+      # 第6步：执行安卓 Debug 包的编译命令
+      - name: Build Android APK (Debug)
+        run: |
+          cd simple_live_app
+          flutter build apk --debug --split-per-abi
+
+      # 第7步：将编译好的 APK 文件作为“产物”上传
+      # 上传后，你可以在这次 Action 运行记录的页面下方找到并下载它
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: |
+            simple_live_app/build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk
+            simple_live_app/build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk
+            simple_live_app/build/app/outputs/flutter-apk/app-x86_64-debug.apk
