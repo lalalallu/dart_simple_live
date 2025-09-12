@@ -1,0 +1,103 @@
+name: Build Windows Release
+
+# 当你创建一个以 "v" 开头的 Git 标签 (e.g., v1.0.0) 并推送到GitHub时，此工作流会自动触发
+on:
+  push:
+    tags:
+      - "v*"
+  # 也允许你手动触发
+  workflow_dispatch:
+
+jobs:
+  # 任务一：打包Windows
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      # 1. 签出代码
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      # 2. 设置Flutter环境
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.22.x"
+          cache: true
+
+      # 3. 开启Windows桌面支持
+      - name: Enable Flutter Desktop
+        run: flutter config --enable-windows-desktop
+
+      # 4. 获取依赖
+      - name: Restore Packages
+        run: |
+          cd simple_live_app
+          flutter pub upgrade
+
+      # 5. 安装打包工具
+      - name: Install flutter_distributor
+        run: dart pub global activate flutter_distributor
+
+      # 6. 打包Windows应用
+      - name: Build Windows
+        run: |
+          cd simple_live_app
+          flutter_distributor package --platform windows --targets msix,zip --skip-clean
+
+      # 7. 上传Windows包作为产物，方便后续发布
+      - name: Upload Windows APP to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            simple_live_app/build/dist/*/*.msix
+            simple_live_app/build/dist/*/*.zip
+
+  # 任务二：将打包好的文件发布到 Release
+  create-release:
+    # 这个任务必须在 build-windows 任务成功后才运行
+    needs: [build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # 1. 签出代码，以读取版本文件
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      # 2. 从Windows任务下载编译好的安装包
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: windows-build
+
+      # 3. 读取版本信息 (假设版本文件在项目根目录的 assets 下)
+      # 注意：原路径是 assets/app_version.json，我猜它在 simple_live_app 里面
+      - name: Read version
+        id: version
+        uses: juliangruber/read-file-action@v1
+        with:
+          path: simple_live_app/assets/app_version.json
+
+      # 4. 创建 GitHub Release 并上传所有文件
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          # 使用版本文件中的版本号和描述
+          name: "${{ fromJson(steps.version.outputs.content).version }}"
+          body: "${{ fromJson(steps.version.outputs.content).version_desc }}"
+          prerelease: ${{ fromJson(steps.version.outputs.content).prerelease }}
+          # !! 重要：你需要创建一个名为 TOKEN 的仓库机密，值为你的 Personal Access Token
+          token: ${{ secrets.TOKEN }}
+          files: |
+            windows-build/*/*.msix
+            windows-build/*/*.zip
